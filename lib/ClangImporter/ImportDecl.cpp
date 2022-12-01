@@ -4451,6 +4451,35 @@ namespace {
             decl, Diagnostic(diag::forward_declared_protocol_label, decl),
             decl->getSourceRange().getBegin());
 
+        if (Impl.ImportForwardDeclarations) {
+          auto result = Impl.createDeclWithClangNode<ProtocolDecl>(
+              decl, AccessLevel::Public,
+              Impl.getClangModuleForDecl(decl->getCanonicalDecl(),
+                                         /*allowForwardDeclaration=*/true),
+              Impl.importSourceLoc(decl->getBeginLoc()),
+              Impl.importSourceLoc(decl->getLocation()), name,
+              ArrayRef<PrimaryAssociatedTypeName>(), None,
+              /*TrailingWhere=*/nullptr);
+
+          Impl.ImportedDecls[{decl->getCanonicalDecl(), getVersion()}] = result;
+          result->setSuperclass(Impl.getNSObjectProtocolType());
+          result->setAddedImplicitInitializers(); // suppress all initializers
+          addObjCAttribute(result,
+                           Impl.importIdentifier(decl->getIdentifier()));
+          SmallVector<InheritedEntry, 4> inheritedTypes = {
+              TypeLoc::withoutLoc(Impl.getNSObjectProtocolType())};
+          result->setInherited(Impl.SwiftContext.AllocateCopy(inheritedTypes));
+          result->setImplicit();
+          auto attr = AvailableAttr::createPlatformAgnostic(
+              Impl.SwiftContext,
+              "This Objective-C protocol has only been forward-declared; "
+              "import its owning module to use it");
+          result->getAttrs().add(attr);
+          result->getAttrs().add(
+              new (Impl.SwiftContext) ForbidSerializingReferenceAttr(true));
+          return result;
+        }
+
         forwardDeclaration = true;
         return nullptr;
       }
@@ -4505,6 +4534,8 @@ namespace {
 
     Decl *VisitObjCInterfaceDecl(const clang::ObjCInterfaceDecl *decl) {
       auto createFakeRootClass = [=](Identifier name,
+                                     bool cacheResult,
+                                     bool inheritFromNSObject,
                                      DeclContext *dc = nullptr) -> ClassDecl * {
         if (!dc) {
           dc = Impl.getClangModuleForDecl(decl->getCanonicalDecl(),
@@ -4517,8 +4548,14 @@ namespace {
                                                         SourceLoc(), None,
                                                         nullptr, dc,
                                                         /*isActor*/false);
-        Impl.ImportedDecls[{decl->getCanonicalDecl(), getVersion()}] = result;
-        result->setSuperclass(Type());
+        if (cacheResult) 
+          Impl.ImportedDecls[{decl->getCanonicalDecl(), getVersion()}] = result;
+
+        if (inheritFromNSObject) 
+          result->setSuperclass(Impl.getNSObjectType());
+        else
+          result->setSuperclass(Type());
+
         result->setAddedImplicitInitializers(); // suppress all initializers
         result->setHasMissingVTableEntries(false);
         addObjCAttribute(result, Impl.importIdentifier(decl->getIdentifier()));
@@ -4539,6 +4576,8 @@ namespace {
           nsObjectTy->getClassOrBoundGenericClass();
 
         auto result = createFakeRootClass(Impl.SwiftContext.Id_Protocol,
+                                      /* cacheResult */ false,
+                                      /* inheritFromNSObject */ false,
                                       nsObjectDecl->getDeclContext());
         result->setForeignClassKind(ClassDecl::ForeignKind::RuntimeOnly);
         return result;
@@ -4571,9 +4610,13 @@ namespace {
           }
         }
 
+        Impl.addImportDiagnostic(
+            decl, Diagnostic(diag::forward_declared_interface_label, decl),
+            decl->getSourceRange().getBegin());
+
         if (Impl.ImportForwardDeclarations) {
           // Fake it by making an unavailable opaque @objc root class.
-          auto result = createFakeRootClass(name);
+          auto result = createFakeRootClass(name, /* cacheResult */ true, /* inheritFromNSObject */ true);
           result->setImplicit();
           auto attr = AvailableAttr::createPlatformAgnostic(Impl.SwiftContext,
               "This Objective-C class has only been forward-declared; "
@@ -4582,10 +4625,6 @@ namespace {
           result->getAttrs().add(
               new (Impl.SwiftContext) ForbidSerializingReferenceAttr(true));
           return result;
-        } else {
-          Impl.addImportDiagnostic(
-              decl, Diagnostic(diag::forward_declared_interface_label, decl),
-              decl->getSourceRange().getBegin());
         }
 
         forwardDeclaration = true;

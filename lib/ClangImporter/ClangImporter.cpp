@@ -6164,6 +6164,24 @@ void ClangImporter::diagnoseMemberValue(const DeclName &name,
       Impl.diagnoseMemberValue(name,
                                cast<clang::DeclContext>(clangContainerDecl));
     }
+
+    if (Impl.ImportForwardDeclarations) {
+      const clang::Decl *clangContainerDecl = containerDecl->getClangDecl();
+      if (const clang::ObjCInterfaceDecl* objCInterfaceDecl = llvm::dyn_cast_or_null<clang::ObjCInterfaceDecl>(clangContainerDecl)) {
+        if (!objCInterfaceDecl->hasDefinition()) {
+          // Emit a diagnostic about how the base type represents a forward declared ObjC interface and is in all likelihood missing members
+          Impl.diagnose(baseType->getAnyNominal()->getSourceRange().Start, diag::placeholder_for_forward_declared_interface_member_access_failure, baseType->getAnyNominal()->getNameStr());
+          // Emit any diagnostics attached to the source Clang node (ie. forward declaration here note)
+          Impl.diagnoseTargetDirectly(clangContainerDecl);
+        }
+      } else if (const clang::ObjCProtocolDecl* objCProtocolDecl = llvm::dyn_cast_or_null<clang::ObjCProtocolDecl>(clangContainerDecl)) {
+        if (!objCProtocolDecl->hasDefinition()) {
+          // Same as above but for protocols
+          Impl.diagnose(baseType->getAnyNominal()->getSourceRange().Start, diag::placeholder_for_forward_declared_protocol_member_access_failure, baseType->getAnyNominal()->getNameStr());
+          Impl.diagnoseTargetDirectly(clangContainerDecl);
+        }
+      }
+    }
   }
 }
 
