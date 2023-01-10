@@ -1,0 +1,49 @@
+struct Profile {
+    var bodyType: String
+    var dietaryPreferences: String
+    var healthConditions: String
+}
+
+class ProfileViewController: UIViewController {
+    
+    var profile: Profile?
+    
+    @IBOutlet weak var bodyTypeTextField: UITextField!
+    @IBOutlet weak var dietaryPreferencesTextField: UITextField!
+    @IBOutlet weak var healthConditionsTextField: UITextField!
+    @IBOutlet weak var createProfileButton: UIButton!
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        createProfileButton.addTarget(self, action: #selector(createProfile), for: .touchUpInside)
+    }
+    
+    @objc func createProfile() {
+        let bodyType = bodyTypeTextField.text
+        let dietaryPreferences = dietaryPreferencesTextField.text
+        let healthConditions = healthConditionsTextField.text
+        
+        profile = Profile(bodyType: bodyType, dietaryPreferences: dietaryPreferences, healthConditions: healthConditions)
+        
+        // Save the profile to user defaults or to a remote server
+        saveProfileToUserDefaults(profile: profile)
+        // or
+        saveProfileToServer(profile: profile)
+        
+        // Transition to the next screen
+        let mainVC = MainViewController()
+        present(mainVC, animated: true, completion: nil)
+    }
+    
+    func saveProfileToUserDefaults(profile: Profile) {
+        let userDefaults = UserDefaults.standard
+        userDefaults.set(profile.bodyType, forKey: "bodyType")
+        userDefaults.set(profile.dietaryPreferences, forKey: "dietaryPreferences")
+        userDefaults.set(profile.healthConditions, forKey: "healthConditions")
+    }
+    
+    func saveProfileToServer(profile: Profile) {
+        // Implement code to save the profile to a remote server here
+    }
+}
